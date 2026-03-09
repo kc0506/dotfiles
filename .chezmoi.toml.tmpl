@@ -1,5 +1,8 @@
 {{- $machine_type := promptChoiceOnce . "machine_type" "Machine type" (list "wsl" "csie") -}}
 
+[edit]
+    command = "nvim"
+
 {{ if eq $machine_type "csie" -}}
 sourceDir = "/tmp2/{{ .chezmoi.username }}/.chezmoi-source"
 {{ end -}}
