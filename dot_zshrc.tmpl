@@ -46,13 +46,6 @@ source $ZSH/oh-my-zsh.sh
 # Zellij
 command -v zellij &>/dev/null && eval "$(zellij setup --generate-auto-start zsh)"
 
-# Brew
-{{ if eq .machine_type "csie" -}}
-[ -x "$HOME/.linuxbrew/bin/brew" ] && eval "$($HOME/.linuxbrew/bin/brew shellenv zsh)"
-{{ else -}}
-[ -x "/home/linuxbrew/.linuxbrew/bin/brew" ] && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv zsh)"
-{{ end -}}
-
 # Mise
 command -v mise &>/dev/null && eval "$(mise activate zsh)"
 

@@ -1,3 +1,8 @@
 [tools]
 node = "latest"
 python = "latest"
+chezmoi = "latest"
+uv = "latest"
+just = "latest"
+zellij = "latest"
+neovim = "latest"
