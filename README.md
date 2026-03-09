@@ -12,7 +12,7 @@ sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply kc0506
 
 ### CSIE workstation
 
-> Why on earth do we have to use NFS on CSIE anyways :)
+> Workarounds with such a tiny quota on the NFS home directory is just painful...
 
 Home directory is shared across machines with limited space. Large directories are symlinked to `/tmp2` (per-machine disk). Chezmoi source is stored on `/tmp2` to avoid conflicts with `.local/share` symlink.
 
