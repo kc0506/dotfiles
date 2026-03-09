@@ -1,0 +1,11 @@
+#!/bin/bash
+
+echo ">>> [06] Installing claude code..."
+if ! command -v claude &>/dev/null; then
+{{- if eq .machine_type "csie" }}
+  # NFS home can't handle large file writes, override download dir to /tmp2
+  curl -fsSL https://claude.ai/install.sh | sed 's|DOWNLOAD_DIR="$HOME/.claude/downloads"|DOWNLOAD_DIR="/tmp2/'"$(whoami)"'/claude-downloads"|' | bash
+{{- else }}
+  curl -fsSL https://claude.ai/install.sh | bash
+{{- end }}
+fi
