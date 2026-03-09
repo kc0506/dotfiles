@@ -23,11 +23,8 @@ export MANPAGER='nvim +Man!'
 export PATH="$HOME/.local/bin:$PATH"
 export PATH="$HOME/manual-bin:$PATH"
 {{ if eq .machine_type "csie" -}}
-export PATH="/tmp2/$(whoami)/.symlinks/.npm-global/bin:$PATH"
 export LD_LIBRARY_PATH="$HOME/tmp2/local/lib:$LD_LIBRARY_PATH"
 export UV_CACHE_DIR="/tmp2/$(whoami)/.cache/uv"
-{{ else -}}
-export PATH="$HOME/.npm-global/bin:$PATH"
 {{ end -}}
 
 # Cargo
