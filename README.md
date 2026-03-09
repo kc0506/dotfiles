@@ -17,11 +17,7 @@ sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply kc0506
 Home directory is shared across machines with limited space. Large directories are symlinked to `/tmp2` (per-machine disk). Chezmoi source is stored on `/tmp2` to avoid conflicts with `.local/share` symlink.
 
 ```bash
-# Chezmoi state must be per-machine (before chezmoi init)
-mkdir -p "/tmp2/$(whoami)/.symlinks/.config/chezmoi"
-ln -sfn "/tmp2/$(whoami)/.symlinks/.config/chezmoi" "$HOME/.config/chezmoi"
-
-sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply --source "/tmp2/$(whoami)/.chezmoi-source" kc0506
+curl -fsSL https://raw.githubusercontent.com/kc0506/dotfiles/main/setup-csie.sh | bash
 ```
 
 Symlinks are created automatically by the `run_onchange_00` script. If a target path already exists as a real directory, the script will abort — remove it manually first.
