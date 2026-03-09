@@ -18,6 +18,9 @@ if [ ! -f "$CHEZMOI_CONFIG_DIR/chezmoi.toml" ]; then
 EOF
 fi
 
+# Clean previous source if exists (ensure fresh clone)
+rm -rf "$CHEZMOI_SOURCE"
+
 # Install chezmoi and init
 sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply --source "$CHEZMOI_SOURCE" kc0506
 
