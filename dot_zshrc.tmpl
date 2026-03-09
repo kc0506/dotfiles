@@ -44,17 +44,17 @@ plugins=(git zsh-python-module-completion)
 source $ZSH/oh-my-zsh.sh
 
 # Zellij
-eval "$(zellij setup --generate-auto-start zsh)"
+command -v zellij &>/dev/null && eval "$(zellij setup --generate-auto-start zsh)"
 
 # Brew
 {{ if eq .machine_type "csie" -}}
-eval "$($HOME/.linuxbrew/bin/brew shellenv zsh)"
+[ -x "$HOME/.linuxbrew/bin/brew" ] && eval "$($HOME/.linuxbrew/bin/brew shellenv zsh)"
 {{ else -}}
-eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv zsh)"
+[ -x "/home/linuxbrew/.linuxbrew/bin/brew" ] && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv zsh)"
 {{ end -}}
 
 # Mise
-eval "$(mise activate zsh)"
+command -v mise &>/dev/null && eval "$(mise activate zsh)"
 
 # pnpm
 export PNPM_HOME="$HOME/.local/share/pnpm"
