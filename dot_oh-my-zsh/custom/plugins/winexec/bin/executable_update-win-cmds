@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# ~/.oh-my-zsh/custom/plugins/winexec/bin/update-win-cmds
+cachefile="$HOME/.cache/winexec_commands.txt"
+
+mkdir -p "$(dirname "$cachefile")"
+
+# /mnt/c/Users/kc0506/scoop/shims/pwsh.exe -NoProfile -c "echo \$Env:Path";
+
+/mnt/c/Users/kc0506/scoop/shims/pwsh.exe -NoProfile -c \
+	"echo \$Env:Path" \
+  l tr -d '\r' \
+  | tr ';' '\n' \
+  | sed 's#\\#/#g; s#^\([A-Z]\):#/mnt/\L\1#' \
+  | while read -r dir; do
+      [ -d "$dir" ] && find "$dir" -maxdepth 1 -type f \( -iname '*.exe' -o -iname '*.bat' -o -iname '*.cmd' \)
+    done \
+  | sed 's#.*/##; s/\.[Ee][Xx][Ee]$//; s/\.[Bb][Aa][Tt]$//; s/\.[Cc][Mm][Dd]$//' \
+  | sort -u > "$cachefile"
+
