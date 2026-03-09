@@ -2,8 +2,15 @@
 {{- if eq .machine_type "csie" }}
 
 if [ ! -d "$HOME/miniforge3/condabin" ]; then
+  # Remove empty symlink target if it exists (created by symlink script)
+  MINIFORGE_TARGET=$(readlink -f "$HOME/miniforge3" 2>/dev/null || echo "$HOME/miniforge3")
+  [ -d "$MINIFORGE_TARGET" ] && rmdir "$MINIFORGE_TARGET" 2>/dev/null
+  [ -L "$HOME/miniforge3" ] && rm -f "$HOME/miniforge3"
+
   curl -fsSL -o /tmp/miniforge.sh https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh
-  bash /tmp/miniforge.sh -b -p "$HOME/miniforge3"
+  bash /tmp/miniforge.sh -b -p "$MINIFORGE_TARGET"
+  # Restore symlink if installed to /tmp2
+  [ "$MINIFORGE_TARGET" != "$HOME/miniforge3" ] && ln -s "$MINIFORGE_TARGET" "$HOME/miniforge3"
   rm /tmp/miniforge.sh
 fi
 {{- end }}
