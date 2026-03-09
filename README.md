@@ -4,77 +4,49 @@ Managed with [chezmoi](https://www.chezmoi.io/).
 
 ## Setup
 
-On a fresh machine, bootstrap with a single command:
+### WSL
 
 ```bash
 sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply kc0506
 ```
 
-This installs chezmoi, clones this repo, applies all dotfiles, and runs `run_once` scripts (brew, mise, oh-my-zsh) automatically.
+### CSIE workstation
 
-## What's managed
+Home directory is shared across machines with limited space. Large directories are symlinked to `/tmp2` (per-machine disk). Chezmoi source is also stored on `/tmp2` to avoid conflicts with `.local/share` symlink.
 
-### Shell
+```bash
+# 1. Bootstrap symlinks first (before chezmoi)
+mkdir -p /tmp2/$(whoami)/.symlinks
+for d in .cache .cargo .claude .rustup .npm .npm-global .local/lib .local/share .linuxbrew miniforge3; do
+  target="/tmp2/$(whoami)/.symlinks/$d"
+  link="$HOME/$d"
+  mkdir -p "$target" "$(dirname "$link")"
+  [ -L "$link" ] || [ ! -e "$link" ] && ln -sfn "$target" "$link"
+done
+ln -sfn "/tmp2/$(whoami)" "$HOME/tmp2"
 
-- **zshrc** - oh-my-zsh (robbyrussell theme), zellij auto-start, bun/brew/opencode PATH setup
-- **bashrc** - Kali-style two-line prompt
-- **zshenv** - cargo env
-- **zprofile** - login shell profile loading
-- **inputrc** - arrow keys for history search
+# 2. Init chezmoi with source on /tmp2
+sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply --source "/tmp2/$(whoami)/.chezmoi-source" kc0506
+```
 
-### Custom shell functions (in .zshrc)
+## Machine types
 
-| Function | Description |
-|---|---|
-| `del` | Safe delete — moves files to `~/trash/` instead of `rm` |
-| `ivk` | WSL `Invoke-Item` wrapper — open files/folders in Windows |
-| `clresume` | Resume Claude Code session with skip-permissions |
+Configured via `chezmoi init` prompt (`machine_type`):
 
-### Custom oh-my-zsh plugins
-
-| Plugin | Description |
-|---|---|
-| `mvd` | Move latest file(s) from `~/Downloads` to current dir |
-| `winexec` | Run Windows executables from WSL via `win <cmd>` |
-| `zsh-python-module-completion` | Completion for `python -m` (installed via git clone) |
-
-### Neovim
-
-LazyVim-based config with custom keymaps, autocmds, and options.
-
-### Terminal tools
-
-| Tool | Notable config |
-|---|---|
-| **zellij** | Custom keybinds (clear-defaults, vim-style navigation) |
-| **btop** | Default theme, truecolor enabled |
-| **htop** | Custom field layout |
-
-### Dev tools
-
-| Tool | Notable config |
-|---|---|
-| **git** | user: kc0506, global ignore for `.claude/settings.local.json` |
-| **gh** | HTTPS protocol, `co` alias for `pr checkout` |
-| **mise** | Runtime version manager — node (latest), python (latest) |
-| **npm** | Global prefix `~/.npm-global` |
-| **Claude Code** | language: Chinese, always-thinking enabled |
-
-### Aliases
-
-| Alias | Target |
-|---|---|
-| `vim` | `nvim` |
-
-### Environment variables
-
-| Variable | Value |
-|---|---|
-| `MANPAGER` | `nvim +Man!` |
-| `EDITOR` | `vim` (in bashrc) |
+- **wsl** — WSL on Windows, has sudo, includes `ivk()`, `winexec` plugin
+- **csie** — CSIE DL workstation, no sudo, brew in `~/.linuxbrew`, conda/mamba, symlinks to `/tmp2`
 
 ## Auto-install scripts
 
-- `run_once_install-brew.sh` - Installs Linuxbrew + mise
-- `run_once_install-mise.sh` - Runs `mise install` for tools in config.toml
-- `run_once_install-oh-my-zsh.sh` - Installs oh-my-zsh (with `KEEP_ZSHRC=yes`) and external plugins
+Executed in order:
+
+| Script | Description |
+|--------|-------------|
+| `00-symlinks-to-tmp2` | Symlink large dirs to `/tmp2` (csie only, run_onchange) |
+| `01-install-brew` | Homebrew + mise, zellij, nvim, uv, just, chezmoi |
+| `02-install-oh-my-zsh` | oh-my-zsh + external plugins |
+| `03-install-mise-tools` | `mise install` (node, python, etc.) |
+| `04-install-npm-globals` | pnpm |
+| `05-install-rustup` | Rust toolchain |
+| `06-install-miniforge` | Miniforge3 (csie only) |
+| `07-install-claude-code` | Claude Code CLI |
