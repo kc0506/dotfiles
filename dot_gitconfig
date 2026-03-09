@@ -1,3 +1,7 @@
 [user]
 	email = kchong0506@gmail.com
 	name = kc0506
+[core]
+	editor = nvim
+[credential]
+	helper = store
