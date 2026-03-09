@@ -1,5 +1,6 @@
 #!/bin/bash
 
+echo ">>> [02] Installing mise + tools..."
 # Install mise
 if ! command -v mise &>/dev/null; then
   curl https://mise.run | sh

@@ -1,5 +1,6 @@
 #!/bin/bash
 {{- if eq .machine_type "csie" }}
+echo ">>> [05] Installing miniforge..."
 
 if [ ! -d "$HOME/miniforge3/condabin" ]; then
   # Remove empty symlink target if it exists (created by symlink script)

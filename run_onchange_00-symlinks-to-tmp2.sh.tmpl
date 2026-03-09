@@ -1,5 +1,6 @@
 #!/bin/bash
 {{- if eq .machine_type "csie" }}
+echo ">>> [00] Setting up symlinks to /tmp2..."
 
 # Symlink large directories to /tmp2 to save home directory space.
 

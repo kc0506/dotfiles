@@ -1,5 +1,6 @@
 #!/bin/bash
 
+echo ">>> [07] Generating zsh completions..."
 # Generate zsh completions for tools installed via mise
 
 ZFUNC="$HOME/.zfunc"
