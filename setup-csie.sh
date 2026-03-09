@@ -20,3 +20,6 @@ fi
 
 # Install chezmoi and init
 sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply --source "$CHEZMOI_SOURCE" kc0506
+
+# Clean up bootstrap chezmoi (mise installs its own)
+rm -f "$HOME/bin/chezmoi"
