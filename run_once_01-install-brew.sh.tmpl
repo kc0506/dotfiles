@@ -3,10 +3,13 @@ echo 01-install-brew
 
 # Install Homebrew (Linuxbrew)
 if ! command -v brew &>/dev/null; then
-  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 {{- if eq .machine_type "csie" }}
+  git clone https://github.com/Homebrew/brew "$HOME/.linuxbrew/Homebrew"
+  mkdir -p "$HOME/.linuxbrew/bin"
+  ln -sf "$HOME/.linuxbrew/Homebrew/bin/brew" "$HOME/.linuxbrew/bin/brew"
   eval "$($HOME/.linuxbrew/bin/brew shellenv bash)"
 {{- else }}
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
   eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv bash)"
 {{- end }}
 fi
