@@ -1,0 +1,5 @@
+#!/bin/bash
+{{- if eq .machine_type "csie" }}
+echo ">>> [08] Linking chezmoi source dir..."
+ln -sfn "/tmp2/$(whoami)/.chezmoi-source" "$HOME/.local/share/chezmoi"
+{{- end }}
