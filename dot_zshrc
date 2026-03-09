@@ -157,5 +157,7 @@ eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv zsh)"
 
 fpath+=~/.zfunc; autoload -Uz compinit; compinit
 
+eval "$(mise activate zsh)"
+
 # opencode
 export PATH=/home/kc0506/.opencode/bin:$PATH

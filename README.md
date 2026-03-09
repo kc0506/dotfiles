@@ -4,11 +4,13 @@ Managed with [chezmoi](https://www.chezmoi.io/).
 
 ## Setup
 
+On a fresh machine, bootstrap with a single command:
+
 ```bash
-chezmoi init --apply git@github.com:kc0506/dotfiles.git
+sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply kc0506
 ```
 
-Prerequisites: `brew` (Linuxbrew) should be installed first. chezmoi `run_once` scripts handle the rest.
+This installs chezmoi, clones this repo, applies all dotfiles, and runs `run_once` scripts (brew, mise, oh-my-zsh) automatically.
 
 ## What's managed
 
@@ -54,7 +56,7 @@ LazyVim-based config with custom keymaps, autocmds, and options.
 |---|---|
 | **git** | user: kc0506, global ignore for `.claude/settings.local.json` |
 | **gh** | HTTPS protocol, `co` alias for `pr checkout` |
-| **mise** | Runtime version manager (config managed, tools installed separately) |
+| **mise** | Runtime version manager — node (latest), python (latest) |
 | **npm** | Global prefix `~/.npm-global` |
 | **Claude Code** | language: Chinese, always-thinking enabled |
 
@@ -73,4 +75,6 @@ LazyVim-based config with custom keymaps, autocmds, and options.
 
 ## Auto-install scripts
 
+- `run_once_install-brew.sh` - Installs Linuxbrew + mise
+- `run_once_install-mise.sh` - Runs `mise install` for tools in config.toml
 - `run_once_install-oh-my-zsh.sh` - Installs oh-my-zsh (with `KEEP_ZSHRC=yes`) and external plugins
