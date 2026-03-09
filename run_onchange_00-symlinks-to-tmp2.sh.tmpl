@@ -1,0 +1,37 @@
+#!/bin/bash
+{{- if eq .machine_type "csie" }}
+
+# Symlink large directories to /tmp2 to save home directory space.
+
+SYMLINK_BASE="/tmp2/$(whoami)/.symlinks"
+
+mklink() {
+    local name="$1"
+    local target="$SYMLINK_BASE/$name"
+    local link_path="$HOME/$name"
+
+    mkdir -p "$target"
+    mkdir -p "$(dirname "$link_path")"
+
+    if [ -L "$link_path" ] || [ -e "$link_path" ]; then
+        rm -f "$link_path"
+    fi
+
+    ln -s "$target" "$link_path"
+    echo "Created symlink: $link_path -> $target"
+}
+
+mklink .cache
+mklink .cargo
+mklink .claude
+mklink .rustup
+mklink .npm
+mklink .npm-global
+mklink .local/lib
+mklink .local/share
+mklink .linuxbrew
+mklink miniforge3
+
+# Convenience link
+ln -sfn "/tmp2/$(whoami)" "$HOME/tmp2"
+{{- end }}

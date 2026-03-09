@@ -1,0 +1,4 @@
+{{- $machine_type := promptChoiceOnce . "machine_type" "Machine type" (list "wsl" "csie") -}}
+
+[data]
+    machine_type = {{ $machine_type | quote }}

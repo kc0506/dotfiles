@@ -1,0 +1,9 @@
+#!/bin/bash
+{{- if eq .machine_type "csie" }}
+
+if [ ! -d "$HOME/miniforge3/condabin" ]; then
+  curl -fsSL -o /tmp/miniforge.sh https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh
+  bash /tmp/miniforge.sh -b -p "$HOME/miniforge3"
+  rm /tmp/miniforge.sh
+fi
+{{- end }}
