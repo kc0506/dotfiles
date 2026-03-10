@@ -12,6 +12,10 @@ mklink() {
     local link_path="$HOME/$name"
 
     mkdir -p "$target"
+    # Restrict permissions for sensitive directories
+    case "$name" in
+        .gnupg) chmod 700 "$target" ;;
+    esac
     mkdir -p "$(dirname "$link_path")"
 
     if [ -L "$link_path" ]; then
