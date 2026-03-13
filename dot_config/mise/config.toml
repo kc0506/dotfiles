@@ -1,6 +1,9 @@
 [tools]
+fd = "latest"
+fzf = "latest"
 node = "latest"
 python = "latest"
+rg = "latest"
 chezmoi = "latest"
 uv = "latest"
 just = "latest"

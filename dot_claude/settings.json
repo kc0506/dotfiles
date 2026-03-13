@@ -1,4 +1,8 @@
 {
+  "statusLine": {
+    "type": "command",
+    "command": "bash -c '\"/home/kc0506/.bun/bin/bun\" \"$(ls -td ~/.claude/plugins/cache/claude-hud/claude-hud/*/ 2>/dev/null | head -1)src/index.ts\"'"
+  },
   "enabledPlugins": {
     "frontend-design@claude-plugins-official": true,
     "context7@claude-plugins-official": true,
@@ -6,9 +10,10 @@
     "typescript-lsp@claude-plugins-official": false,
     "lsp-servers@claude-lsp-servers": false,
     "pyright-lsp@claude-plugins-official": false,
-    "claude-hud@claude-hud": false
+    "claude-hud@claude-hud": true
   },
   "language": "Chinese",
   "alwaysThinkingEnabled": true,
+  "effortLevel": "high",
   "skipDangerousModePermissionPrompt": true
 }
