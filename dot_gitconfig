@@ -3,3 +3,5 @@
 	name = kc0506
 [push]
 	autoSetupRemote = true
+[credential]
+	helper = cache --timeout 7200
