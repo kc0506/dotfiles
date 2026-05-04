@@ -1,0 +1,139 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["typer>=0.12"]
+# ///
+"""Link a Claude Code project session directory to additional cwd paths.
+
+Claude Code stores per-project sessions at:
+    ~/.claude/projects/<encoded-cwd>/
+
+`<encoded-cwd>` is the absolute cwd with every '/' and '.' replaced by '-'.
+By symlinking another encoded path to an existing project dir, you can
+resume the source's sessions from a different cwd (worktree, subpath, etc.).
+"""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Annotated
+
+import typer
+
+PROJECTS_DIR = Path.home() / ".claude" / "projects"
+
+app = typer.Typer(
+    help="Link Claude Code session dirs across cwd paths.",
+    no_args_is_help=True,
+)
+
+
+@dataclass(frozen=True)
+class ProjectPath:
+    """A real cwd, plus the corresponding ~/.claude/projects/<encoded> dir."""
+
+    path: Path
+
+    @classmethod
+    def of(cls, raw: str | os.PathLike[str]) -> ProjectPath:
+        return cls(Path(raw).resolve())
+
+    @property
+    def encoded(self) -> str:
+        return str(self.path).replace("/", "-").replace(".", "-")
+
+    @property
+    def project_dir(self) -> Path:
+        return PROJECTS_DIR / self.encoded
+
+
+def fail(msg: str, *hints: str) -> "typer.Exit":
+    typer.echo(f"error: {msg}", err=True)
+    for h in hints:
+        typer.echo(f"  {h}", err=True)
+    return typer.Exit(1)
+
+
+@app.command()
+def encode(path: str) -> None:
+    """Show the encoded project-dir name for PATH."""
+    typer.echo(ProjectPath.of(path).encoded)
+
+
+@app.command()
+def link(
+    target: Annotated[str, typer.Argument(help="path that should resolve to source's sessions")],
+    source: Annotated[str, typer.Option("--from", help="source path (default: cwd)")] = "",
+    force: Annotated[bool, typer.Option("--force", help="allow chaining when source itself is a symlink")] = False,
+) -> None:
+    """Symlink TARGET's encoded project dir to SOURCE's."""
+    src = ProjectPath.of(source or os.getcwd())
+    tgt = ProjectPath.of(target)
+
+    if not src.project_dir.exists():
+        raise fail(
+            f"source project dir does not exist: {src.project_dir}",
+            f"(encoded from {src.path})",
+        )
+
+    if src.project_dir.is_symlink() and not force:
+        raise fail(
+            f"source itself is a symlink: {src.project_dir} -> {os.readlink(src.project_dir)}",
+            "refuse to chain symlinks; pass --force to override",
+        )
+
+    if tgt.project_dir.is_symlink():
+        existing = Path(os.readlink(tgt.project_dir))
+        if existing.resolve() == src.project_dir.resolve():
+            typer.echo(f"already linked: {tgt.project_dir} -> {src.project_dir}")
+            return
+        raise fail(f"{tgt.project_dir} already symlinks elsewhere: {existing}")
+
+    if tgt.project_dir.exists():
+        raise fail(
+            f"{tgt.project_dir} already exists as a real directory",
+            "resolve manually to avoid losing target's existing sessions",
+        )
+
+    PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
+    tgt.project_dir.symlink_to(src.project_dir, target_is_directory=True)
+    typer.echo(f"linked: {tgt.project_dir} -> {src.project_dir}")
+    typer.echo(f"  source path : {src.path}")
+    typer.echo(f"  target path : {tgt.path}")
+
+
+@app.command()
+def unlink(target: str) -> None:
+    """Remove the symlink at TARGET's encoded project dir."""
+    tgt = ProjectPath.of(target)
+
+    if not tgt.project_dir.is_symlink():
+        if tgt.project_dir.exists():
+            raise fail(
+                f"{tgt.project_dir} is a real directory, not a symlink",
+                "refuse to delete; remove manually if you really mean to",
+            )
+        raise fail(f"nothing to unlink: {tgt.project_dir} does not exist")
+
+    dest = os.readlink(tgt.project_dir)
+    tgt.project_dir.unlink()
+    typer.echo(f"unlinked: {tgt.project_dir} (was -> {dest})")
+
+
+@app.command("list")
+def list_() -> None:
+    """List all symlinks under ~/.claude/projects."""
+    if not PROJECTS_DIR.exists():
+        return
+    links = [e for e in sorted(PROJECTS_DIR.iterdir()) if e.is_symlink()]
+    if not links:
+        typer.echo(f"no symlinks found in {PROJECTS_DIR}")
+        return
+    for entry in links:
+        typer.echo(f"{entry.name} -> {os.readlink(entry)}")
+
+
+if __name__ == "__main__":
+    app()

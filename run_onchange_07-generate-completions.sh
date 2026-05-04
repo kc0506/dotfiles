@@ -10,3 +10,6 @@ command -v chezmoi &>/dev/null && chezmoi completion zsh > "$ZFUNC/_chezmoi"
 command -v just &>/dev/null && just --completions zsh > "$ZFUNC/_just"
 command -v uv &>/dev/null && uv generate-shell-completion zsh > "$ZFUNC/_uv"
 command -v zellij &>/dev/null && zellij setup --generate-completion zsh > "$ZFUNC/_zellij"
+command -v cc-link &>/dev/null && SHELL=/bin/zsh cc-link --show-completion > "$ZFUNC/_cc-link" 2>/dev/null
+
+exit 0
