@@ -9,3 +9,11 @@
 if [ -f "$HOME/.profile" ]; then
     emulate sh -c '. "$HOME/.profile"'
 fi
+
+# WSL: entering from Windows via `wsl` starts a *login* shell, so cd into the
+# main working dir here. Shells started inside WSL (zellij panes, subshells,
+# `zsh` without -l) are non-login and never source this file, so they keep
+# their own cwd. The $ZELLIJ guard skips it even if a pane is a login shell.
+if [[ -z "$ZELLIJ" && -n "$WSL_DISTRO_NAME" && -d "$HOME/main" ]]; then
+    cd "$HOME/main"
+fi

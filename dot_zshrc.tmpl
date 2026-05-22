@@ -15,6 +15,7 @@ ivk() {
 
 alias gdown='uvx gdown'
 alias zj=zellij
+alias cc-viewer='npx @kimuson/claude-code-viewer@latest --port 3400'
 # alias vim=nvim
 
 export EDITOR=nvim
@@ -45,11 +46,18 @@ plugins=(git zsh-python-module-completion)
 {{ end -}}
 source $ZSH/oh-my-zsh.sh
 
-# Zellij
-# command -v zellij &>/dev/null && eval "$(zellij setup --generate-auto-start zsh)"
-
 # Mise
 command -v mise &>/dev/null && eval "$(mise activate zsh)"
+
+# Zellij — auto-start on interactive login. Must come *after* mise activation,
+# since zellij is installed via mise and isn't on PATH until then.
+# Skipped inside VS Code's integrated terminal ($TERM_PROGRAM=vscode): zellij's
+# kitty keyboard protocol would otherwise capture VS Code's own shortcuts
+# (Ctrl+`, Ctrl+P, …). Run `zj` manually there if you do want zellij.
+# (also skipped automatically when already inside a zellij session)
+if [[ "$TERM_PROGRAM" != "vscode" ]]; then
+    command -v zellij &>/dev/null && eval "$(zellij setup --generate-auto-start zsh)"
+fi
 
 # pnpm
 export PNPM_HOME="$HOME/.local/share/pnpm"
@@ -57,6 +65,11 @@ case ":$PATH:" in
   *":$PNPM_HOME:"*) ;;
   *) export PATH="$PNPM_HOME:$PATH" ;;
 esac
+
+# bun
+[ -s "$HOME/.bun/_bun" ] && source "$HOME/.bun/_bun"
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
 
 {{ if eq .machine_type "csie" -}}
 # >>> conda initialize >>>
