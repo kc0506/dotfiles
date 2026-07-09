@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# 掛 meow2 整個 tmp2 -> Windows T: (SSHFS-Win, 簽署/SAC 相容, lazy on-demand, 持久化)
+# ~/tmp2 是 symlink, 故用實體絕對路徑 /tmp2/b10401006 + .kr 前綴。
+# 認證: Windows C:\Users\kchon\.ssh\id_rsa (= id_ed25519 複本)。
+DRIVE="${1:-T:}"
+HOST="b10401006@meow2.csie.ntu.edu.tw"
+cmd.exe /c "net use $DRIVE /delete /y" >/dev/null 2>&1
+echo -n "$DRIVE -> meow2:/tmp2/b10401006 : "
+cmd.exe /c "net use $DRIVE \\\\sshfs.kr\\$HOST\\tmp2\\b10401006 /persistent:yes" 2>&1 \
+  | tr -d '\r' | grep -iE "successfully|error|System" | head -1

@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# WSL2 下列出正在使用 GPU 的 process(繞過 nvidia-smi/nvtop 在 WSL 無法顯示 process 的限制)
+# 原理:WSL2 GPU 走 /dev/dxg,找出開啟該裝置的 process
+set -euo pipefail
+
+pids=$(lsof -t /dev/dxg 2>/dev/null | sort -u || true)
+if [ -z "${pids:-}" ]; then
+  echo "目前沒有 process 在使用 GPU (/dev/dxg)"
+  exit 0
+fi
+
+printf "%-8s %-9s %-7s %s\n" "PID" "RSS(MB)" "USER" "COMMAND"
+for pid in $pids; do
+  [ -d "/proc/$pid" ] || continue
+  rss_kb=$(awk '/^VmRSS:/{print $2}' "/proc/$pid/status" 2>/dev/null || echo 0)
+  rss_mb=$(( ${rss_kb:-0} / 1024 ))
+  user=$(stat -c '%U' "/proc/$pid" 2>/dev/null || echo '?')
+  cmd=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | cut -c1-90)
+  [ -z "$cmd" ] && cmd=$(cat "/proc/$pid/comm" 2>/dev/null || echo '?')
+  printf "%-8s %-9s %-7s %s\n" "$pid" "$rss_mb" "$user" "$cmd"
+done

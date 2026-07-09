@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# 卸載 meow2 SSHFS-Win 磁碟機。用法: meow2-umount [T:]  預設 T:
+DRIVE="${1:-T:}"
+echo -n "$DRIVE : "
+cmd.exe /c "net use $DRIVE /delete /y" 2>&1 | tr -d '\r' | grep -iE "deleted|error|not" | head -1
