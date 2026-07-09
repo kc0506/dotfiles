@@ -3,31 +3,44 @@
 # requires-python = ">=3.11"
 # dependencies = ["typer>=0.12"]
 # ///
-"""Link a Claude Code project session directory to additional cwd paths.
+"""Workspace-style cross-cwd Claude Code session sharing.
 
-Claude Code stores per-project sessions at:
-    ~/.claude/projects/<encoded-cwd>/
+Claude Code stores sessions per-cwd at:
+    ~/.claude/projects/<encoded-cwd>/<uuid>.jsonl
 
-`<encoded-cwd>` is the absolute cwd with every '/' and '.' replaced by '-'.
-By symlinking another encoded path to an existing project dir, you can
-resume the source's sessions from a different cwd (worktree, subpath, etc.).
+A "workspace" is a set of cwd paths whose sessions are mutually visible:
+each member's project dir holds symlinks to every peer's real *.jsonl.
+New sessions land in their real dir; `cc-link sync` re-propagates them.
+
+Only *.jsonl files are linked. memory/, settings, and any other content
+stay per-project — sharing those is a separate decision the user makes
+manually if they want to.
 """
 
 from __future__ import annotations
 
+import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
 PROJECTS_DIR = Path.home() / ".claude" / "projects"
+MANIFEST_PATH = Path.home() / ".claude" / "cc-link" / "manifest.json"
 
 app = typer.Typer(
-    help="Link Claude Code session dirs across cwd paths.",
+    help="Cross-cwd Claude Code session sharing.",
     no_args_is_help=True,
 )
+
+
+def fail(msg: str, *hints: str) -> typer.Exit:
+    typer.echo(f"error: {msg}", err=True)
+    for h in hints:
+        typer.echo(f"  {h}", err=True)
+    return typer.Exit(1)
 
 
 @dataclass(frozen=True)
@@ -49,90 +62,247 @@ class ProjectPath:
         return PROJECTS_DIR / self.encoded
 
 
-def fail(msg: str, *hints: str) -> "typer.Exit":
-    typer.echo(f"error: {msg}", err=True)
-    for h in hints:
-        typer.echo(f"  {h}", err=True)
-    return typer.Exit(1)
+@dataclass
+class Manifest:
+    """Workspaces: each is a list of cwd paths whose sessions are mutually visible."""
+
+    workspaces: list[list[Path]] = field(default_factory=list)
+
+    @classmethod
+    def load(cls) -> Manifest:
+        if not MANIFEST_PATH.exists():
+            return cls()
+        data = json.loads(MANIFEST_PATH.read_text())
+        return cls(workspaces=[[Path(p) for p in ws] for ws in data.get("workspaces", [])])
+
+    def save(self) -> None:
+        MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
+        MANIFEST_PATH.write_text(
+            json.dumps(
+                {"workspaces": [[str(p) for p in ws] for ws in self.workspaces]},
+                indent=2,
+            )
+            + "\n"
+        )
+
+    def workspace_of(self, path: Path) -> int | None:
+        for i, ws in enumerate(self.workspaces):
+            if path in ws:
+                return i
+        return None
+
+    def join(self, paths: list[Path]) -> int:
+        """Add paths to a shared workspace, merging any pre-existing groups."""
+        existing = sorted({i for p in paths if (i := self.workspace_of(p)) is not None})
+
+        if not existing:
+            self.workspaces.append(list(dict.fromkeys(paths)))
+            return len(self.workspaces) - 1
+
+        merged: list[Path] = []
+        for i in existing:
+            for p in self.workspaces[i]:
+                if p not in merged:
+                    merged.append(p)
+        for p in paths:
+            if p not in merged:
+                merged.append(p)
+
+        for i in reversed(existing):
+            del self.workspaces[i]
+        self.workspaces.append(merged)
+        return len(self.workspaces) - 1
+
+    def leave(self, path: Path) -> int | None:
+        """Remove path from its workspace. Returns workspace index that is now stale (or None)."""
+        i = self.workspace_of(path)
+        if i is None:
+            return None
+        self.workspaces[i].remove(path)
+        if len(self.workspaces[i]) <= 1:
+            del self.workspaces[i]
+            return None
+        return i
+
+
+def real_jsonls(project_dir: Path) -> list[Path]:
+    """Real (non-symlink) .jsonl files in project_dir."""
+    if not project_dir.exists():
+        return []
+    return [
+        p for p in project_dir.iterdir()
+        if p.suffix == ".jsonl" and p.is_file() and not p.is_symlink()
+    ]
+
+
+def clear_managed_symlinks(project_dir: Path) -> int:
+    """Remove every symlink in project_dir whose target lives under PROJECTS_DIR.
+
+    We only own cross-workspace symlinks; anything pointing outside is ignored.
+    """
+    if not project_dir.exists():
+        return 0
+    removed = 0
+    for entry in list(project_dir.iterdir()):
+        if not entry.is_symlink():
+            continue
+        try:
+            target = (entry.parent / os.readlink(entry)).resolve()
+        except OSError:
+            continue
+        if target.is_relative_to(PROJECTS_DIR):
+            entry.unlink()
+            removed += 1
+    return removed
+
+
+def sync_workspace(workspace: list[Path]) -> dict[str, int]:
+    """Rebuild cross-symlinks among workspace members. Idempotent.
+
+    Removes all our managed symlinks first, then recreates one symlink per
+    peer's real *.jsonl. Real files are never touched.
+    """
+    members = [ProjectPath(p) for p in workspace]
+
+    for m in members:
+        if m.project_dir.is_symlink():
+            raise fail(
+                f"{m.project_dir} is a symlink (legacy or external)",
+                f"remove it first: rm {m.project_dir}",
+            )
+        m.project_dir.mkdir(parents=True, exist_ok=True)
+
+    real = {m.project_dir: real_jsonls(m.project_dir) for m in members}
+
+    counts = {"added": 0, "removed": 0}
+    for me in members:
+        counts["removed"] += clear_managed_symlinks(me.project_dir)
+
+        for peer in members:
+            if peer.project_dir == me.project_dir:
+                continue
+            for jsonl in real[peer.project_dir]:
+                link_path = me.project_dir / jsonl.name
+                if link_path.exists() and not link_path.is_symlink():
+                    raise fail(
+                        f"name collision: {link_path} is a real file",
+                        f"peer has same name: {jsonl}",
+                    )
+                rel = os.path.relpath(jsonl, link_path.parent)
+                link_path.symlink_to(rel)
+                counts["added"] += 1
+
+    return counts
+
+
+def resolve_paths(args: list[str]) -> list[Path]:
+    """Pair cwd with single-arg input; pass through 2+ args verbatim. Dedupes."""
+    paths = [Path(a).resolve() for a in args]
+    if len(paths) == 1:
+        paths = [Path.cwd().resolve(), *paths]
+    deduped = list(dict.fromkeys(paths))
+    if len(deduped) < 2:
+        raise fail("need at least 2 distinct paths to form a workspace")
+    return deduped
+
+
+def show_workspace(manifest: Manifest, i: int, *, cwd: Path | None = None) -> None:
+    typer.echo(f"workspace #{i + 1} ({len(manifest.workspaces[i])} members):")
+    for p in manifest.workspaces[i]:
+        marker = "* " if cwd and p == cwd else "  "
+        typer.echo(f"  {marker}{p}")
+
+
+@app.command()
+def link(
+    paths: Annotated[list[str], typer.Argument(help="paths to join (1 path = pairs with cwd)")],
+) -> None:
+    """Join paths into a shared workspace and sync."""
+    abs_paths = resolve_paths(paths)
+    manifest = Manifest.load()
+    i = manifest.join(abs_paths)
+    manifest.save()
+
+    counts = sync_workspace(manifest.workspaces[i])
+    show_workspace(manifest, i, cwd=Path.cwd().resolve())
+    typer.echo(f"  sync: +{counts['added']} -{counts['removed']}")
+
+
+@app.command()
+def sync(
+    all_: Annotated[bool, typer.Option("--all", help="sync every workspace, not just cwd's")] = False,
+) -> None:
+    """Refresh cross-symlinks for cwd's workspace (or all)."""
+    manifest = Manifest.load()
+    if all_:
+        indices = list(range(len(manifest.workspaces)))
+        if not indices:
+            typer.echo("no workspaces to sync")
+            return
+    else:
+        i = manifest.workspace_of(Path.cwd().resolve())
+        if i is None:
+            raise fail(f"cwd {Path.cwd()} is not in any workspace")
+        indices = [i]
+
+    for i in indices:
+        counts = sync_workspace(manifest.workspaces[i])
+        typer.echo(f"workspace #{i + 1}: +{counts['added']} -{counts['removed']}")
+
+
+@app.command()
+def unlink(
+    path: Annotated[str, typer.Argument(help="path to remove (default: cwd)")] = "",
+) -> None:
+    """Remove a path from its workspace, clearing its managed symlinks."""
+    p = Path(path).resolve() if path else Path.cwd().resolve()
+    manifest = Manifest.load()
+    i = manifest.workspace_of(p)
+    if i is None:
+        raise fail(f"{p} is not in any workspace")
+
+    other_members = [x for x in manifest.workspaces[i] if x != p]
+    removed = clear_managed_symlinks(ProjectPath(p).project_dir)
+
+    surviving = manifest.leave(p)
+    manifest.save()
+
+    if surviving is not None:
+        counts = sync_workspace(manifest.workspaces[surviving])
+        typer.echo(f"removed {p} (-{removed} symlinks); peers re-synced: +{counts['added']} -{counts['removed']}")
+    else:
+        for op in other_members:
+            clear_managed_symlinks(ProjectPath(op).project_dir)
+        typer.echo(f"removed {p} (-{removed} symlinks); workspace dissolved")
+
+
+@app.command()
+def status() -> None:
+    """Show cwd's workspace membership."""
+    cwd = Path.cwd().resolve()
+    manifest = Manifest.load()
+    i = manifest.workspace_of(cwd)
+    if i is None:
+        typer.echo(f"{cwd}: not in any workspace")
+        return
+    show_workspace(manifest, i, cwd=cwd)
+
+
+@app.command("list")
+def list_() -> None:
+    """List all workspaces."""
+    manifest = Manifest.load()
+    if not manifest.workspaces:
+        typer.echo("no workspaces")
+        return
+    for i in range(len(manifest.workspaces)):
+        show_workspace(manifest, i)
 
 
 @app.command()
 def encode(path: str) -> None:
     """Show the encoded project-dir name for PATH."""
     typer.echo(ProjectPath.of(path).encoded)
-
-
-@app.command()
-def link(
-    target: Annotated[str, typer.Argument(help="path that should resolve to source's sessions")],
-    source: Annotated[str, typer.Option("--from", help="source path (default: cwd)")] = "",
-    force: Annotated[bool, typer.Option("--force", help="allow chaining when source itself is a symlink")] = False,
-) -> None:
-    """Symlink TARGET's encoded project dir to SOURCE's."""
-    src = ProjectPath.of(source or os.getcwd())
-    tgt = ProjectPath.of(target)
-
-    if not src.project_dir.exists():
-        raise fail(
-            f"source project dir does not exist: {src.project_dir}",
-            f"(encoded from {src.path})",
-        )
-
-    if src.project_dir.is_symlink() and not force:
-        raise fail(
-            f"source itself is a symlink: {src.project_dir} -> {os.readlink(src.project_dir)}",
-            "refuse to chain symlinks; pass --force to override",
-        )
-
-    if tgt.project_dir.is_symlink():
-        existing = Path(os.readlink(tgt.project_dir))
-        if existing.resolve() == src.project_dir.resolve():
-            typer.echo(f"already linked: {tgt.project_dir} -> {src.project_dir}")
-            return
-        raise fail(f"{tgt.project_dir} already symlinks elsewhere: {existing}")
-
-    if tgt.project_dir.exists():
-        raise fail(
-            f"{tgt.project_dir} already exists as a real directory",
-            "resolve manually to avoid losing target's existing sessions",
-        )
-
-    PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
-    tgt.project_dir.symlink_to(src.project_dir, target_is_directory=True)
-    typer.echo(f"linked: {tgt.project_dir} -> {src.project_dir}")
-    typer.echo(f"  source path : {src.path}")
-    typer.echo(f"  target path : {tgt.path}")
-
-
-@app.command()
-def unlink(target: str) -> None:
-    """Remove the symlink at TARGET's encoded project dir."""
-    tgt = ProjectPath.of(target)
-
-    if not tgt.project_dir.is_symlink():
-        if tgt.project_dir.exists():
-            raise fail(
-                f"{tgt.project_dir} is a real directory, not a symlink",
-                "refuse to delete; remove manually if you really mean to",
-            )
-        raise fail(f"nothing to unlink: {tgt.project_dir} does not exist")
-
-    dest = os.readlink(tgt.project_dir)
-    tgt.project_dir.unlink()
-    typer.echo(f"unlinked: {tgt.project_dir} (was -> {dest})")
-
-
-@app.command("list")
-def list_() -> None:
-    """List all symlinks under ~/.claude/projects."""
-    if not PROJECTS_DIR.exists():
-        return
-    links = [e for e in sorted(PROJECTS_DIR.iterdir()) if e.is_symlink()]
-    if not links:
-        typer.echo(f"no symlinks found in {PROJECTS_DIR}")
-        return
-    for entry in links:
-        typer.echo(f"{entry.name} -> {os.readlink(entry)}")
 
 
 if __name__ == "__main__":
