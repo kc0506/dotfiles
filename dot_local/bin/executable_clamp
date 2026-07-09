@@ -210,6 +210,22 @@ log_verbose() {
     fi
 }
 
+# Prompt the user interactively, reading from the terminal (/dev/tty) instead of
+# the current stdin. This is required because several prompts run inside
+# `while IFS= read -r ... done <<< "$data"` loops, where the loop body's stdin is
+# the here-string, not the terminal. A plain `read` there silently consumes the
+# next data line instead of the user's keystrokes. Sets REPLY; leaves it empty in
+# non-interactive contexts (no usable tty) so callers treat that as "skip/decline".
+# Usage: prompt_tty "message" [extra read options...]
+prompt_tty() {
+    local message="$1"
+    shift
+    REPLY=""
+    if [[ -e /dev/tty ]]; then
+        read -p "$message" "$@" -r < /dev/tty || REPLY=""
+    fi
+}
+
 # Rollback on failure
 cleanup() {
     local exit_code=$?
@@ -1857,7 +1873,7 @@ execute_fix_explicit() {
 
     # Confirm
     if [[ "$FORCE" != true ]]; then
-        read -p "Apply fix? [y/N] " -n 1 -r
+        prompt_tty "Apply fix? [y/N] " -n 1
         echo ""
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             log_info "Fix cancelled"
@@ -2084,7 +2100,7 @@ execute_fix_auto() {
                 execute_fix_explicit "$bp" "$single_match"
                 ((fixed++)) || true
             else
-                read -p "    Fix $bp → $single_match? [y/N] " -n 1 -r
+                prompt_tty "    Fix $bp → $single_match? [y/N] " -n 1
                 echo ""
                 if [[ $REPLY =~ ^[Yy]$ ]]; then
                     execute_fix_explicit "$bp" "$single_match"
@@ -2100,8 +2116,8 @@ execute_fix_auto() {
                 ((i++)) || true
             done <<< "$matches"
             if [[ "$DRY_RUN" != true && "$FORCE" != true ]]; then
-                read -p "    Select match (1-$match_count, or Enter to skip): " -r
-                if [[ -n "$REPLY" ]]; then
+                prompt_tty "    Select match (1-$match_count, or Enter to skip): "
+                if [[ "$REPLY" =~ ^[0-9]+$ ]]; then
                     local selected
                     selected=$(echo "$matches" | sed -n "${REPLY}p")
                     if [[ -n "$selected" ]]; then
