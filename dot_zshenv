@@ -1,1 +1,11 @@
 [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
+
+# mise shims: expose mise-managed tools (uv/python/node/nvim/rg/fd/gh/just/uvx…)
+# in non-interactive shells too — e.g. `ssh host 'cmd'`, where .zshrc's
+# `mise activate` never runs. Interactive shells still get the full activate.
+if [ -d "$HOME/.local/share/mise/shims" ]; then
+  case ":$PATH:" in
+    *":$HOME/.local/share/mise/shims:"*) ;;
+    *) export PATH="$HOME/.local/share/mise/shims:$PATH" ;;
+  esac
+fi
