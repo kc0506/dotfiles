@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+#
+# claude-session-backup
+# ------------------------------------------------------------------------------
+# 把 ~/.claude/projects（session 對話紀錄 *.jsonl、subagent log、以及 memory/）
+# 備份到一個「Claude Code 系統動不到」的鏡像目錄，並在偵測到 session 被系統
+# 悄悄刪掉時，自動還原回來。
+#
+# 這支腳本由 chezmoi 管理（source: dot_local/bin/executable_claude-session-backup）；
+# 每小時的 cron 由 chezmoi 的 run_onchange_09-install-claude-backup-cron.sh.tmpl
+# 安裝，且只在 machine_type == "wsl" 的機器上啟用（避免撐爆 meow2 的 2GB home quota）。
+#
+# 兩條方向相反的 rsync，各守一個鐵則：
+#
+#   1) 還原 (mirror -> live，--ignore-existing)
+#        只把「鏡像裡有、但 .claude 裡不見了」的檔案補回去。
+#        --ignore-existing 保證：.claude 裡已存在的檔案「絕不」被覆蓋。
+#        → 這一步同時做到「偵測刪除」＋「救回」，且永遠不會拿舊版蓋掉正在寫的 session。
+#
+#   2) 備份 (live -> mirror，不加 --delete)
+#        把新的 / 變長的 session 更新進鏡像。
+#        沒有 --delete → .claude 裡被刪掉的檔案，會原封不動留在鏡像。
+#
+# 為什麼可以信任：
+#   - 鏡像永不刪檔（備份方向沒有 --delete）。
+#   - 還原永不覆蓋（--ignore-existing）。
+#   - session 檔是 append-only（只會變長），所以鏡像追最新版就夠，不需要版本歷史。
+#
+# 手動用法（~/.local/bin 在 PATH 上時可省略路徑）：
+#   直接跑一次              : claude-session-backup
+#   看發生什麼事            : tail -f ~/claude-backups/backup.log
+#   只想確認會還原哪些(演練): DRY=1 claude-session-backup
+# ------------------------------------------------------------------------------
+
+set -euo pipefail
+
+# cron 的 PATH 很精簡，明確補上，確保 rsync / flock / date 找得到
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
+
+LIVE="$HOME/.claude/projects"          # 來源：Claude Code 真正在用的 session 目錄
+BACKUP_ROOT="$HOME/claude-backups"     # 備份家目錄（在 ~/.claude 之外，系統動不到）
+MIRROR="$BACKUP_ROOT/projects"         # 鏡像：累積式，永不刪檔
+LOG="$BACKUP_ROOT/backup.log"
+LOCK="$BACKUP_ROOT/.lock"
+DRY="${DRY:-0}"                        # DRY=1 → rsync --dry-run，只演練不動檔案
+
+mkdir -p "$MIRROR"
+
+ts()  { date '+%Y-%m-%d %H:%M:%S'; }
+log() { printf '%s  %s\n' "$(ts)" "$*" >> "$LOG"; }
+
+# log 檔超過 2MB 就轉存一份，避免無限長大
+if [ -f "$LOG" ] && [ "$(stat -c%s "$LOG" 2>/dev/null || echo 0)" -gt 2000000 ]; then
+  mv -f "$LOG" "$LOG.1"
+fi
+
+# 避免與上一輪備份重疊執行
+exec 9>"$LOCK"
+if ! flock -n 9; then
+  log "SKIP  另一個備份程序還在跑，本輪跳過"
+  exit 0
+fi
+
+# 來源整個不見（例如 .claude 被連根砍）→ 千萬別讓後面的備份把空狀態同步進鏡像，保住鏡像後離開
+if [ ! -d "$LIVE" ]; then
+  log "WARN  來源 $LIVE 不存在，跳過本輪（鏡像保持不動，資料仍在）"
+  exit 0
+fi
+
+DRYFLAG=()
+[ "$DRY" = "1" ] && DRYFLAG=(--dry-run)
+
+# ---- 1) 還原：鏡像有、live 不見的檔案補回去，絕不覆蓋 live 既有檔案 ----------------
+restored="$(rsync -a --ignore-existing --itemize-changes "${DRYFLAG[@]}" \
+             "$MIRROR/" "$LIVE/" 2>>"$LOG" | grep -E '^>f' || true)"
+if [ -n "$restored" ]; then
+  n="$(printf '%s\n' "$restored" | wc -l | tr -d ' ')"
+  tag="RESTORE"; [ "$DRY" = "1" ] && tag="RESTORE(演練)"
+  log "$tag  偵測到 $n 個檔案在鏡像存在、但 .claude 已不見 → 已還原："
+  printf '%s\n' "$restored" | sed 's/^[^ ]*  *//; s/^/    ↩ /' >> "$LOG"
+fi
+
+# ---- 2) 備份：live 的新 / 變動檔更新進鏡像（不加 --delete，鏡像既有檔案永不刪）------
+if ! rsync -a "${DRYFLAG[@]}" "$LIVE/" "$MIRROR/" 2>>"$LOG" >/dev/null; then
+  log "ERROR 備份 rsync 失敗（詳見上面 stderr）"
+  exit 1
+fi
+
+log "OK  備份完成  live=$(du -sh "$LIVE" 2>/dev/null | cut -f1)  mirror=$(du -sh "$MIRROR" 2>/dev/null | cut -f1)"

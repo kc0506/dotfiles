@@ -1,0 +1,16 @@
+#!/bin/bash
+{{- if eq .machine_type "wsl" }}
+echo ">>> [09] Installing claude-session-backup cron (hourly)..."
+
+SCRIPT="$HOME/.local/bin/claude-session-backup"
+
+# 冪等安裝：先濾掉任何含 "claude-session-backup" 的舊行（含舊路徑的註解與排程），
+# 再重建整段。註解與排程行都含 "claude-session-backup"，所以一次 grep 就能整段汰換，重跑不會重複。
+( crontab -l 2>/dev/null | grep -vF 'claude-session-backup'
+  echo "# claude-session-backup: Claude Code session 每小時備份（偵測刪除自動還原）— 由 chezmoi run_onchange_09 管理"
+  echo "0 * * * * $SCRIPT"
+) | crontab -
+
+echo "目前的 claude-session-backup 排程："
+crontab -l | grep -F 'claude-session-backup' || true
+{{- end }}
