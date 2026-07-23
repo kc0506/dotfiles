@@ -3,6 +3,11 @@
 echo ">>> [07] Generating zsh completions..."
 # Generate zsh completions for tools installed via mise
 
+# chezmoi runs scripts in a non-interactive shell where mise is not activated,
+# so mise-managed tools (just, uv, ...) are not on PATH by default. Add mise
+# shims (and ~/.local/bin for mise itself) so `command -v <tool>` finds them.
+export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
+
 ZFUNC="$HOME/.zfunc"
 mkdir -p "$ZFUNC"
 
