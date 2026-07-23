@@ -1,4 +1,4 @@
-{{- $machine_type := promptChoiceOnce . "machine_type" "Machine type" (list "wsl" "csie") -}}
+{{- $machine_type := promptChoiceOnce . "machine_type" "Machine type" (list "wsl" "csie" "mac") -}}
 
 [edit]
     command = "nvim"

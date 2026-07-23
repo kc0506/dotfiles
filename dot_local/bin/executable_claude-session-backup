@@ -8,7 +8,7 @@
 #
 # 這支腳本由 chezmoi 管理（source: dot_local/bin/executable_claude-session-backup）；
 # 每小時的 cron 由 chezmoi 的 run_onchange_09-install-claude-backup-cron.sh.tmpl
-# 安裝，且只在 machine_type == "wsl" 的機器上啟用（避免撐爆 meow2 的 2GB home quota）。
+# 安裝，且只在 machine_type == "wsl" / "mac" 的機器上啟用（csie/meow2 排除，避免撐爆 2GB home quota）。
 #
 # 兩條方向相反的 rsync，各守一個鐵則：
 #
@@ -35,7 +35,7 @@
 set -euo pipefail
 
 # cron 的 PATH 很精簡，明確補上，確保 rsync / flock / date 找得到
-export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
+export PATH="/opt/homebrew/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
 
 LIVE="$HOME/.claude/projects"          # 來源：Claude Code 真正在用的 session 目錄
 BACKUP_ROOT="$HOME/claude-backups"     # 備份家目錄（在 ~/.claude 之外，系統動不到）
@@ -50,7 +50,7 @@ ts()  { date '+%Y-%m-%d %H:%M:%S'; }
 log() { printf '%s  %s\n' "$(ts)" "$*" >> "$LOG"; }
 
 # log 檔超過 2MB 就轉存一份，避免無限長大
-if [ -f "$LOG" ] && [ "$(stat -c%s "$LOG" 2>/dev/null || echo 0)" -gt 2000000 ]; then
+if [ -f "$LOG" ] && [ "$(stat -c%s "$LOG" 2>/dev/null || stat -f%z "$LOG" 2>/dev/null || echo 0)" -gt 2000000 ]; then
   mv -f "$LOG" "$LOG.1"
 fi
 
@@ -71,7 +71,7 @@ DRYFLAG=()
 [ "$DRY" = "1" ] && DRYFLAG=(--dry-run)
 
 # ---- 1) 還原：鏡像有、live 不見的檔案補回去，絕不覆蓋 live 既有檔案 ----------------
-restored="$(rsync -a --ignore-existing --itemize-changes "${DRYFLAG[@]}" \
+restored="$(rsync -a --ignore-existing --itemize-changes ${DRYFLAG[@]+"${DRYFLAG[@]}"} \
              "$MIRROR/" "$LIVE/" 2>>"$LOG" | grep -E '^>f' || true)"
 if [ -n "$restored" ]; then
   n="$(printf '%s\n' "$restored" | wc -l | tr -d ' ')"
@@ -81,7 +81,7 @@ if [ -n "$restored" ]; then
 fi
 
 # ---- 2) 備份：live 的新 / 變動檔更新進鏡像（不加 --delete，鏡像既有檔案永不刪）------
-if ! rsync -a "${DRYFLAG[@]}" "$LIVE/" "$MIRROR/" 2>>"$LOG" >/dev/null; then
+if ! rsync -a ${DRYFLAG[@]+"${DRYFLAG[@]}"} "$LIVE/" "$MIRROR/" 2>>"$LOG" >/dev/null; then
   log "ERROR 備份 rsync 失敗（詳見上面 stderr）"
   exit 1
 fi

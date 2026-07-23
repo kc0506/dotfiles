@@ -29,6 +29,17 @@ export PATH="$HOME/scripts:$PATH"
 export LD_LIBRARY_PATH="$HOME/tmp2/local/lib:$LD_LIBRARY_PATH"
 export UV_CACHE_DIR="/tmp2/$(whoami)/.cache/uv"
 {{ end -}}
+{{ if eq .chezmoi.os "darwin" -}}
+# GNU coreutils/findutils/sed/grep/awk：讓 rm/cp/mv/ln/ls/find/sed/grep/awk 用 GNU 版，
+# 旗標放哪都吃得下（跟 Linux 一致，不再有 BSD「旗標要放最前面」的坑）。
+# 只在 macOS 且真的裝了對應 brew 套件時生效；缺哪個就安靜跳過，不污染 PATH。
+for _gnubin in coreutils findutils gnu-sed grep gawk; do
+    _dir="/opt/homebrew/opt/$_gnubin/libexec/gnubin"
+    [ -d "$_dir" ] && export PATH="$_dir:$PATH"
+done
+[ -d /opt/homebrew/opt/coreutils/libexec/gnuman ] && export MANPATH="/opt/homebrew/opt/coreutils/libexec/gnuman:$MANPATH"
+unset _gnubin _dir
+{{ end -}}
 
 # Cargo
 [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
@@ -46,6 +57,12 @@ plugins=(git zsh-python-module-completion)
 {{ end -}}
 source $ZSH/oh-my-zsh.sh
 
+{{ if eq .chezmoi.os "darwin" -}}
+# oh-my-zsh 的 theme-and-appearance 在 macOS 會設 `alias ls='ls -G'`（BSD 上色旗標）。
+# 但我們的 ls 已換成 GNU 版，-G 在 GNU 是「不顯示群組」而非上色 → 顏色會消失。
+# 這裡在 omz 之後覆蓋回 GNU 的上色寫法。
+alias ls='ls --color=auto'
+{{ end -}}
 # Mise
 command -v mise &>/dev/null && eval "$(mise activate zsh)"
 

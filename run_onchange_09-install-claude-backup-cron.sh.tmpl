@@ -1,5 +1,5 @@
 #!/bin/bash
-{{- if eq .machine_type "wsl" }}
+{{- if or (eq .machine_type "wsl") (eq .machine_type "mac") }}
 echo ">>> [09] Installing claude-session-backup cron (hourly)..."
 
 SCRIPT="$HOME/.local/bin/claude-session-backup"
