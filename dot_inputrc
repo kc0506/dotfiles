@@ -5,3 +5,8 @@ $include /etc/inputrc
 "\e[A":history-search-backward
 ## arrow down
 "\e[B":history-search-forward
+
+## ⌥+Delete：以空白為界刪整個字詞（預設 backward-kill-word 只認英數，
+## `cli --arg` 會一段段刪、甚至連 cli 一起吃掉）。unix-word-rubout 只用空白當分隔。
+"\e\C-?": unix-word-rubout
+"\e\C-h": unix-word-rubout

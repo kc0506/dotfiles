@@ -71,6 +71,23 @@ esac
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 
+
+# Option+Left/Right 跳單字（emacs-like word navigation）
+# Ghostty 的 macos-option-as-alt=true 會送出這兩個 CSI 序列
+bindkey "\e[1;3D" backward-word   # Option+Left
+bindkey "\e[1;3C" forward-word    # Option+Right
+
+# ⌥+Delete：整個「以空白為界」的字詞一次刪掉（等同 bash 的 unix-word-rubout）
+# 預設 backward-kill-word 只認英數，`cli --arg` 會一段段刪、甚至連 cli 一起吃掉。
+# 這裡臨時把 WORDCHARS 設成「所有標點都算字的一部分」，於是只剩空白當分隔。
+backward-kill-space-word() {
+  local WORDCHARS='*?_-.[]~=&;!#$%^(){}<>|+@:,/'
+  zle backward-kill-word
+}
+zle -N backward-kill-space-word
+bindkey "\e\C-?" backward-kill-space-word   # ⌥+Delete
+bindkey "\e\C-h" backward-kill-space-word   # ⌥+Backspace
+
 {{ if eq .machine_type "csie" -}}
 # >>> conda initialize >>>
 __conda_setup="$("$HOME/miniforge3/bin/conda" 'shell.zsh' 'hook' 2> /dev/null)"
