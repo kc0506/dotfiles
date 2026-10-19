@@ -1,11 +1,12 @@
 {{- $machine_type := promptChoiceOnce . "machine_type" "Machine type" (list "wsl" "csie" "mac") -}}
 
+{{ if eq $machine_type "csie" -}}
+# Top-level key: must come before any [table] header, or TOML puts it in that table.
+sourceDir = "/tmp2/{{ .chezmoi.username }}/.chezmoi-source"
+
+{{ end -}}
 [edit]
     command = "nvim"
-
-{{ if eq $machine_type "csie" -}}
-sourceDir = "/tmp2/{{ .chezmoi.username }}/.chezmoi-source"
-{{ end -}}
 
 [data]
     machine_type = {{ $machine_type | quote }}

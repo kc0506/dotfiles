@@ -18,8 +18,12 @@ if [ ! -f "$CHEZMOI_CONFIG_DIR/chezmoi.toml" ]; then
 EOF
 fi
 
-# Clean previous source if exists (ensure fresh clone)
-rm -rf "$CHEZMOI_SOURCE"
+# Reuse an existing clone (keeps local commits/edits); only re-clone if broken.
+if git -C "$CHEZMOI_SOURCE" rev-parse --git-dir >/dev/null 2>&1; then
+  git -C "$CHEZMOI_SOURCE" pull --ff-only
+else
+  rm -rf "$CHEZMOI_SOURCE"
+fi
 
 # Install chezmoi and init
 sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply --source "$CHEZMOI_SOURCE" kc0506
