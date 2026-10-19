@@ -3,8 +3,9 @@
 echo ">>> [00] Setting up symlinks to /tmp2..."
 
 # Symlink large directories to /tmp2 to save home directory space.
-# run_onchange_before_: must run before chezmoi writes files under these
-# paths (e.g. ~/.local/bin), otherwise they land in the real home dir.
+# run_onchange_before_: must run before chezmoi writes files under these paths.
+# Never link a dir chezmoi itself manages (e.g. ~/.local/bin from dot_local/bin):
+# chezmoi replaces such a symlink with a real dir on every apply.
 # /tmp2 gets wiped periodically; re-running this recreates empty targets.
 
 SYMLINK_BASE="/tmp2/$(whoami)/.symlinks"
@@ -46,7 +47,6 @@ mklink .npm-global
 mklink .mutagen
 mklink .nv
 mklink .vscode-server
-mklink .local/bin
 mklink .local/lib
 mklink .local/share
 mklink miniforge3

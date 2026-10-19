@@ -1,0 +1,23 @@
+#!/bin/bash
+
+echo ">>> [02] Installing mise + tools..."
+# Install mise
+{{- if eq .machine_type "csie" }}
+# ~/.local/bin is in the 2 GB NFS home; keep the ~160 MB binary in /tmp2
+# (~/.local/share is a symlink there) and only link it into ~/.local/bin.
+MISE_BIN="$HOME/.local/share/mise/bin/mise"
+if [ ! -x "$MISE_BIN" ]; then
+  curl https://mise.run | MISE_INSTALL_PATH="$MISE_BIN" sh
+fi
+mkdir -p "$HOME/.local/bin"
+ln -sfn "$MISE_BIN" "$HOME/.local/bin/mise"
+{{- else }}
+if ! command -v mise &>/dev/null; then
+  curl https://mise.run | sh
+fi
+{{- end }}
+
+export PATH="$HOME/.local/bin:$PATH"
+
+# Install all tools defined in ~/.config/mise/config.toml
+mise install --yes
