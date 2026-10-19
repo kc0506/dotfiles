@@ -3,9 +3,12 @@
 # mise shims: expose mise-managed tools (uv/python/node/nvim/rg/fd/gh/just/uvx…)
 # in non-interactive shells too — e.g. `ssh host 'cmd'`, where .zshrc's
 # `mise activate` never runs. Interactive shells still get the full activate.
-if [ -d "$HOME/.local/share/mise/shims" ]; then
+# ~/.local/bin too, for mise itself and the claude launcher.
+for _dir in "$HOME/.local/share/mise/shims" "$HOME/.local/bin"; do
+  [ -d "$_dir" ] || continue
   case ":$PATH:" in
-    *":$HOME/.local/share/mise/shims:"*) ;;
-    *) export PATH="$HOME/.local/share/mise/shims:$PATH" ;;
+    *":$_dir:"*) ;;
+    *) export PATH="$_dir:$PATH" ;;
   esac
-fi
+done
+unset _dir
