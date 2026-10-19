@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# 關掉 meow2 上的 ComfyUI（server + idle 看門狗）和本機的 tunnel 迴圈，把顯存還給別人。
+#   meow2-comfy-down       # 佇列還有東西在跑就拒絕
+#   meow2-comfy-down -f    # 照關不誤
+# 關之前會先把執行紀錄存檔（ComfyUI 的 history 只在記憶體裡），下次開還看得到。
+set -uo pipefail
+
+HOST=meow2
+REMOTE=/home/course/select/b10401006/tmp2/ComfyUI
+SOCK=$REMOTE/run/comfy.sock
+PORT=8188
+STATE=$HOME/.cache/meow2-comfy
+
+FORCE=0
+[ "${1:-}" = "-f" ] || [ "${1:-}" = "--force" ] && FORCE=1
+
+rssh() { ssh -o LogLevel=ERROR -o ConnectTimeout=10 "$HOST" "$@"; }
+
+# 還在跑的東西不要被關掉（除非 -f）
+busy=$(rssh "curl -s --max-time 5 --unix-socket $SOCK http://localhost/queue | $REMOTE/.venv/bin/python -c \
+  'import json,sys; q=json.load(sys.stdin); print(len(q[\"queue_running\"])+len(q[\"queue_pending\"]))'" 2>/dev/null)
+if [ "${busy:-0}" != "0" ] && [ "$FORCE" = 0 ]; then
+  echo "佇列裡還有 $busy 筆在跑／排隊，沒有關。要照關：meow2-comfy-down -f"
+  exit 1
+fi
+
+# 把記憶體裡的執行紀錄存下來，重開才看得到（custom_nodes/meow2-history-persist 負責讀回去）
+rssh "$REMOTE/snapshot_history.sh" 2>/dev/null | sed 's/^/  /'
+
+# 本機 tunnel：先殺迴圈再殺 ssh，不然迴圈會把 ssh 重新拉起來
+if [ -f "$STATE/tunnel.pid" ]; then
+  kill "$(cat "$STATE/tunnel.pid")" 2>/dev/null
+  rm -f "$STATE/tunnel.pid"
+fi
+pkill -f "meow2-comfy-up --tunnel-loop" 2>/dev/null
+pkill -f "ssh -N .*-L $PORT:$SOCK" 2>/dev/null
+echo "tunnel 已關"
+
+# 遠端 server
+rssh "tmux kill-session -t comfy 2>/dev/null; tmux kill-session -t comfy-idle 2>/dev/null; rm -f $SOCK; \
+      sleep 1; pgrep -u \$(id -u) -f 'main\\.py.*--listen' >/dev/null && echo 'server 還在？' || echo 'server 已關'; \
+      nvidia-smi --query-gpu=index,memory.used,memory.total --format=csv,noheader" | sed 's/^\([0-9]\)/  GPU \1/'

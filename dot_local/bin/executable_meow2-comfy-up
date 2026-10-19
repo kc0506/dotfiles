@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# 起 meow2 上的 ComfyUI，並把本機 localhost:8188 接到它的 unix socket。
+#   meow2-comfy-up          # 自動挑空最多的卡
+#   meow2-comfy-up 2        # 指定 GPU
+# server 在 tmux `comfy`（start.sh 會一起帶起 idle 看門狗 `comfy-idle`）；
+# tunnel 是本機背景的重連迴圈，Mac 睡醒會自己接回。關閉用 meow2-comfy-down。
+set -euo pipefail
+
+HOST=meow2
+REMOTE=/home/course/select/b10401006/tmp2/ComfyUI   # ssh -L 不展開 ~，要實體路徑
+SOCK=$REMOTE/run/comfy.sock
+PORT=8188
+STATE=$HOME/.cache/meow2-comfy
+mkdir -p "$STATE"
+
+rssh() { ssh -o LogLevel=ERROR -o ConnectTimeout=10 "$HOST" "$@"; }   # LogLevel=ERROR 壓掉 banner
+
+# ---- 內部模式：tunnel 重連迴圈（由本 script 自己在背景啟動） ----
+if [ "${1:-}" = "--tunnel-loop" ]; then
+  while true; do
+    ssh -N -o LogLevel=ERROR -o ServerAliveInterval=20 -o ServerAliveCountMax=3 \
+        -o ExitOnForwardFailure=yes -L "$PORT:$SOCK" "$HOST" || true
+    sleep 3
+  done
+fi
+
+GPU="${1:-auto}"
+
+# ---- 1. server ----
+if rssh "curl -s --max-time 3 --unix-socket $SOCK http://localhost/system_stats >/dev/null"; then
+  echo "server 已在跑，略過啟動"
+else
+  echo "GPU 現況（index, used, total, util）："
+  rssh 'nvidia-smi --query-gpu=index,memory.used,memory.total,utilization.gpu --format=csv,noheader' | sed 's/^/  /'
+  if [ "$GPU" = auto ]; then
+    # 先挑「沒人在算」的卡（util<30%）裡空最多的，至少要 10 GB；都在忙才退而求其次挑空最多的
+    GPU=$(rssh 'nvidia-smi --query-gpu=index,memory.used,memory.total,utilization.gpu --format=csv,noheader,nounits' \
+          | awk -F', ' '{free=$3-$2; idle=($4<30 && free>=10000);
+                         if (idle && free>bi) {bi=free; ii=$1}
+                         if (free>ba) {ba=free; ia=$1}}
+                       END {if (bi>0) print ii; else {print ia; print "（沒有閒著的卡，挑空最多的，會跟別人搶算力）" > "/dev/stderr"}}')
+  fi
+  echo "→ 用 GPU $GPU"
+  rssh "cd $REMOTE && tmux kill-session -t comfy 2>/dev/null; \
+        [ -f logs/server.log ] && mv logs/server.log logs/server.\$(date +%m%d-%H%M).log; \
+        tmux new -d -s comfy 'GPU=$GPU ./start.sh 2>&1 | tee logs/server.log'"
+  # GPU= 要寫在 tmux 執行的那串裡面：tmux server 是常駐 daemon，client 端的環境變數不會進到新 session
+  printf "等 server 起來"
+  for _ in $(seq 1 45); do
+    if rssh "curl -s --max-time 3 --unix-socket $SOCK http://localhost/system_stats >/dev/null"; then echo " ok"; break; fi
+    printf "."; sleep 2
+  done
+  rssh "curl -s --max-time 3 --unix-socket $SOCK http://localhost/system_stats >/dev/null" \
+    || { echo; echo "server 沒起來，看 log："; rssh "tail -20 $REMOTE/logs/server.log"; exit 1; }
+fi
+
+# 驗收點是「process 真的在哪張卡」，不是我們設了什麼
+# 這段只是檢查，壞掉也不能擋住開 tunnel（曾經因為 pgrep 抓不到 process 就整支中斷）
+info=$( { rssh "$REMOTE/whichgpu.sh" || true; } | tr -dc '0-9 ' )
+on=${info%% *}; free=${info##* }
+if [ -n "$on" ] && [ -n "$free" ]; then
+  echo "server 在 GPU ${on}，該卡還空 $((free / 1024)) GB"
+  if [ "$GPU" != auto ] && [ "$on" != "$GPU" ]; then
+    echo "⚠ 跟指定的 GPU $GPU 不一致"
+  elif [ "$free" -lt 8000 ]; then
+    echo "⚠ 這張卡快滿了（別人的 job），大圖可能會 OOM；可以 meow2-comfy-down 再 up 換一張"
+  fi
+else
+  echo "（查不到 server 在哪張卡，不影響使用）"
+fi
+
+# ---- 2. tunnel ----
+if [ -f "$STATE/tunnel.pid" ] && kill -0 "$(cat "$STATE/tunnel.pid")" 2>/dev/null; then
+  :
+else
+  pkill -f "ssh -N .*-L $PORT:$SOCK" 2>/dev/null || true
+  nohup "$0" --tunnel-loop >"$STATE/tunnel.log" 2>&1 &
+  echo $! >"$STATE/tunnel.pid"
+fi
+printf "等 tunnel"
+for _ in $(seq 1 20); do
+  if curl -s --max-time 3 -o /dev/null "http://localhost:$PORT/"; then echo " ok"; break; fi
+  printf "."; sleep 1
+done
+curl -s --max-time 3 -o /dev/null "http://localhost:$PORT/" || { echo; echo "tunnel 沒通，看 $STATE/tunnel.log"; exit 1; }
+
+echo "http://localhost:$PORT"

@@ -1,11 +1,32 @@
 {
-  "model": "opus[1m]",
+  "cleanupPeriodDays": 36500,
+  "env": {
+    "CLAUDE_CODE_SILENT_TURN_REMINDER_TEXT": "使用者一段時間沒收到你的消息了。用繁體中文簡短說明你正在做什麼，然後繼續。"{{ if eq .machine_type "csie" }},
+    "DISABLE_AUTOUPDATER": "1"{{ end }}
+  },
+  "permissions": {
+    "defaultMode": "bypassPermissions"
+  },
+  "model": "opus",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "h='{{ .chezmoi.homeDir }}/.claude/hooks/herdr-agent-state.sh'; [ -f \"$h\" ] && bash \"$h\" session || true",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
   "statusLine": {
     "type": "command",
     "command": "bash -c 'cols=${COLUMNS:-}; case \"$cols\" in \"\"|*[!0-9]*) cols=$(stty size </dev/tty 2>/dev/null | awk '\"'\"'{print $2}'\"'\"');; esac; case \"$cols\" in \"\"|*[!0-9]*) cols=120;; esac; export COLUMNS=$(( cols > 4 ? cols - 4 : 1 )); plugin_dir=$(ls -d \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}\"/plugins/cache/*/claude-hud/*/ 2>/dev/null | awk -F/ '\"'\"'{ print $(NF-1) \"\\t\" $(0) }'\"'\"' | grep -E '\"'\"'^[0-9]+\\.[0-9]+\\.[0-9]+[[:space:]]'\"'\"' | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n | tail -1 | cut -f2-); node_bin=\"\"; for c in \"$HOME/.local/share/mise/shims/node\" \"$(command -v node 2>/dev/null)\"; do [ -x \"$c\" ] && { node_bin=\"$c\"; break; }; done; exec \"${node_bin:-node}\" \"${plugin_dir}dist/index.js\"'",
     "refreshInterval": 5
   },
-  "cleanupPeriodDays": 36500,
   "enabledPlugins": {
     "frontend-design@claude-plugins-official": true,
     "context7@claude-plugins-official": true,
@@ -18,7 +39,10 @@
     "superpowers@claude-plugins-official": false,
     "rust-analyzer-lsp@claude-plugins-official": true,
     "vercel@claude-plugins-official": true,
-    "ntucool@ntucool": true
+    "ntucool@ntucool": true,
+    "cloudflare@cloudflare": true,
+    "swift-lsp@claude-plugins-official": true,
+    "cc-plugin-you-should-know@builtin": true
   },
   "extraKnownMarketplaces": {
     "claude-hud": {
@@ -32,18 +56,32 @@
         "source": "github",
         "repo": "kc0506/ntucool"
       }
+    },
+    "cloudflare": {
+      "source": {
+        "source": "github",
+        "repo": "cloudflare/skills"
+      }
     }
   },
   "language": "chinese",
   "alwaysThinkingEnabled": true,
   "effortLevel": "xhigh",
+  "modelSettings": {
+    "claude-opus-5-5": {
+      "effortLevel": "medium"
+    }
+  },
   "tui": "default",
   "voice": {
     "enabled": true,
     "mode": "hold"
   },
   "skipDangerousModePermissionPrompt": true,
+  "theme": "dark",
+  "autoCompactEnabled": false,
+  "switchModelsOnFlag": false,
+  "autoContinueAtUsageLimit": true,
   "agentPushNotifEnabled": true,
-  "voiceEnabled": true,
-  "theme": "dark"
+  "voiceEnabled": true
 }

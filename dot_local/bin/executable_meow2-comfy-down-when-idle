@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# 等 meow2 上的 ComfyUI 佇列跑完，然後立刻 meow2-comfy-down（存紀錄、關 server、收 tunnel）。
+#   meow2-comfy-down-when-idle          # 佇列一空就關
+#   meow2-comfy-down-when-idle 300      # 連續空閒 300 秒才關（中間又有新任務就重新計時）
+#   meow2-comfy-down-when-idle -b [秒]  # 丟到背景，關機時發 macOS 通知
+# 整個等待跑在同一條 ssh 上（遠端迴圈），不會每幾秒開一次連線。
+set -uo pipefail
+
+HOST=meow2
+REMOTE=/home/course/select/b10401006/tmp2/ComfyUI
+SOCK=$REMOTE/run/comfy.sock
+STATE=$HOME/.cache/meow2-comfy
+INTERVAL=5
+
+BG=0
+if [ "${1:-}" = "-b" ] || [ "${1:-}" = "--background" ]; then BG=1; shift; fi
+GRACE="${1:-0}"
+
+if [ "$BG" = 1 ]; then
+  mkdir -p "$STATE"
+  nohup "$0" "$GRACE" >"$STATE/down-when-idle.log" 2>&1 &
+  echo "在背景等：$STATE/down-when-idle.log（pid $!）"
+  exit 0
+fi
+
+notify() {  # 背景執行時終端可能已經關了，用 macOS 通知
+  command -v osascript >/dev/null &&
+    osascript -e "display notification \"$1\" with title \"meow2 ComfyUI\"" 2>/dev/null
+}
+
+echo "$(date +%H:%M:%S) 等佇列跑完${GRACE:+（需連續空閒 ${GRACE}s）}…"
+
+# 遠端單一迴圈：忙的時候回報筆數，達成空閒條件就印 IDLE 並結束；server 不見了印 GONE
+ssh -o LogLevel=ERROR -o ServerAliveInterval=30 -o ServerAliveCountMax=3 "$HOST" "
+  cd $REMOTE || exit 3
+  empty=0; last=-1
+  while true; do
+    [ -S $SOCK ] || { echo GONE; exit 3; }
+    n=\$(curl -s --max-time 10 --unix-socket $SOCK http://localhost/queue \
+        | .venv/bin/python -c 'import json,sys; q=json.load(sys.stdin); print(len(q[\"queue_running\"])+len(q[\"queue_pending\"]))' 2>/dev/null)
+    case \"\$n\" in ''|*[!0-9]*) echo GONE; exit 3;; esac
+    if [ \"\$n\" = 0 ]; then
+      [ \"\$empty\" -ge $GRACE ] && { echo IDLE; exit 0; }
+      empty=\$((empty + $INTERVAL))
+    else
+      empty=0
+      [ \"\$n\" != \"\$last\" ] && echo \"BUSY \$n\"
+      last=\$n
+    fi
+    sleep $INTERVAL
+  done
+" | while read -r tag rest; do
+  case "$tag" in
+    BUSY) echo "$(date +%H:%M:%S) 佇列還有 $rest 筆" ;;
+    IDLE) echo "$(date +%H:%M:%S) 佇列空了，關機" ;;
+    GONE) echo "$(date +%H:%M:%S) server 已經不在了（可能被工作站砍掉），收一下本機 tunnel" ;;
+  esac
+done
+
+meow2-comfy-down
+rc=$?
+[ "$rc" = 0 ] && notify "已關閉，顯存還回去了" || notify "關機失敗（exit ${rc}）"
+exit $rc

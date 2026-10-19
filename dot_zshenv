@@ -12,3 +12,20 @@ for _dir in "$HOME/.local/share/mise/shims" "$HOME/.local/bin"; do
   esac
 done
 unset _dir
+
+# VS Code CLI: expose `code` in non-interactive shells too.
+VSCODE_BIN="/Applications/Visual Studio Code.app/Contents/Resources/app/bin"
+if [ -d "$VSCODE_BIN" ]; then
+  case ":$PATH:" in
+    *":$VSCODE_BIN:"*) ;;
+    *) export PATH="$PATH:$VSCODE_BIN" ;;
+  esac
+fi
+
+# mednote parse pipeline: wand dlopen's MagickWand at import time and only
+# looks under $MAGICK_HOME. Here rather than .zshrc so non-interactive shells
+# (scripts, `just`, agent-run commands) get it too — without it every EMF/WMF
+# vector conversion fails silently. Literal path, not `brew --prefix`: brew
+# itself is only on PATH from .zprofile (login shells).
+MAGICK_PREFIX="/opt/homebrew/opt/imagemagick"
+[ -d "$MAGICK_PREFIX" ] && export MAGICK_HOME="$MAGICK_PREFIX"
