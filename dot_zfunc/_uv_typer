@@ -1,0 +1,22 @@
+#autoload
+
+# uv / uvx 的補全外皮。
+#
+# zsh 的補全綁在命令列「第一個字」上，所以打 `uv run myapp <TAB>` 時跑的是 uv 的
+# 補全，myapp 自己的補全永遠不會被呼叫（uv 那邊只會退化成補檔名）。這支就是在
+# `uv run` / `uvx` 後面認出已登記的 Typer app，把補全轉交給它。
+#
+# 只認 typer_apps 裡登記過的名字，因此不必去解析 uv 那堆會吃值的旗標
+# （--project / --with / --python …）——掃到哪個字是登記過的 app，那格就是 app。
+
+local i
+
+for (( i = 2; i < CURRENT; i++ )); do
+  if (( ${typer_apps[(Ie)${words[i]:t}]} )); then
+    _typer_app $i
+    return
+  fi
+done
+
+# 不是在補 Typer app，交回 uv 原本的補全（_uv / _uvx）。
+_${${words[1]:t}//-/_} "$@"

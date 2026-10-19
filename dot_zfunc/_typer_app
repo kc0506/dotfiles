@@ -1,0 +1,35 @@
+#autoload
+
+# 任意 Typer app 的通用 zsh 補全。
+#
+# Typer 的補全協定完全由「指令名」決定，不含 app 專屬內容：把已輸入的字放進
+# _TYPER_COMPLETE_ARGS，再帶著 _<PROG_NAME>_COMPLETE=complete_zsh 去執行該 app，
+# app 就會吐出一段 _arguments 的 zsh 程式碼讓我們 eval。
+# 所以不必像 `<app> --install-completion` 那樣每個 app 各存一份 ~/.zfunc/_<app>
+# （而且那個指令還會往 .zshrc 塞重複的 compinit / zstyle）。
+#
+# 用法：compdef _typer_app <指令名> [指令名...]
+#       指令名清單維護在 ~/.zshrc 的 typer_apps 陣列。
+#
+# $1（選填）：app 名字位在 $words 的第幾格，預設 1。_uv_typer 會用這個參數把
+# `uv run … <app>` 的情況轉進來。
+
+local app_idx=1
+[[ $1 == <-> ]] && app_idx=$1
+
+local prog=${words[app_idx]:t}
+
+# 指令名會被直接組成環境變數名。含其他字元（例如 foo.py）組不出合法的變數名，
+# Typer/Click 那端也讀不到，直接放棄比丟出怪錯誤好。
+[[ $prog == [A-Za-z0-9_-]## ]] || return 1
+
+local var=_${${prog//-/_}:u}_COMPLETE
+local out
+
+# 執行方式直接沿用使用者打的前綴：直接呼叫時就是 app 本身，`uv run --project X app`
+# 的話就連旗標一起帶著跑，不用自己去解析 uv 的旗標。
+# 非 Typer app 被誤登記時會印 usage 到 stderr 並非零退出；吞掉、不要 eval 垃圾。
+out=$(env _TYPER_COMPLETE_ARGS="${words[app_idx,$CURRENT]}" "$var=complete_zsh" ${words[1,app_idx]} 2>/dev/null) || return 1
+[[ -n $out ]] || return 1
+
+eval $out

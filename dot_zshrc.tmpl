@@ -12,10 +12,26 @@ ivk() {
     win pwsh -Command "Invoke-Item '$target'"
 }
 {{ end -}}
+{{ if eq .chezmoi.os "darwin" -}}
+nosleep() {
+  if pmset -g | grep -q "SleepDisabled.*1"; then
+    sudo pmset -a disablesleep 0 && echo "☕️ off — 闔蓋會休眠"
+  else
+    sudo pmset -a disablesleep 1 && echo "🔥 on — 闔蓋不休眠"
+  fi
+}
+{{ end -}}
+
+alias stty='/bin/stty'
 
 alias gdown='uvx gdown'
 alias zj=zellij
-alias cc-viewer='npx @kimuson/claude-code-viewer@latest --port 3400'
+# Runs the local checkout rather than the npm release, which lags behind fixes
+# that only live in the working tree. Rebuilds first (~4s) so it never serves a
+# stale dist; the subshell keeps the cd out of the calling shell.
+cc-viewer() {
+    (cd ~/main/claude-code-viewer && pnpm build && node dist/main.js --port 3400 "$@")
+}
 # alias vim=nvim
 
 export EDITOR=nvim
@@ -39,12 +55,15 @@ for _gnubin in coreutils findutils gnu-sed grep gawk; do
 done
 [ -d /opt/homebrew/opt/coreutils/libexec/gnuman ] && export MANPATH="/opt/homebrew/opt/coreutils/libexec/gnuman:$MANPATH"
 unset _gnubin _dir
+[ -d /opt/homebrew/opt/unzip/bin ] && export PATH="/opt/homebrew/opt/unzip/bin:$PATH"
 {{ end -}}
 
 # Cargo
 [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
 
 # Completions
+# 靜態補全檔（_uv/_uvx/_chezmoi/…）放這；compinit 由下面的 oh-my-zsh 跑，
+# 所以要 compdef 的動態註冊得等到 omz 之後（見底下的 typer_apps）。
 fpath+=~/.zfunc
 
 # Oh My Zsh
@@ -63,18 +82,34 @@ source $ZSH/oh-my-zsh.sh
 # 這裡在 omz 之後覆蓋回 GNU 的上色寫法。
 alias ls='ls --color=auto'
 {{ end -}}
+
+# Typer app 補全。~/.zfunc/_typer_app 是通用的，任何 Typer app 只要把指令名
+# 加進這個陣列就有補全，不用跑 `<app> --install-completion`（那會每個 app 存一份
+# 補全檔，還會往這個檔案尾巴追加重複的 compinit / zstyle）。
+# 補全是即時去執行該 app 問答案，所以每按一次 TAB 就有一次 Python 啟動。
+typer_apps=(mednote)
+if (( $#typer_apps )); then
+    # 這行讓「已 activate venv／app 在 PATH 上」時 `myapp <TAB>` 會補。
+    compdef _typer_app $typer_apps
+    # 這行讓 `uv run myapp <TAB>` 也會補：補全綁在第一個字上，所以得從 uv 那邊
+    # 轉交（見 ~/.zfunc/_uv_typer）。非 Typer app 的情況會原樣退回 uv 自己的補全。
+    compdef _uv_typer uv uvx
+fi
+
 # Mise
 command -v mise &>/dev/null && eval "$(mise activate zsh)"
 
-# Zellij — auto-start on interactive login. Must come *after* mise activation,
+# Zellij — auto-start on interactive login (not on csie; run `zj` there by hand). Must come *after* mise activation,
 # since zellij is installed via mise and isn't on PATH until then.
 # Skipped inside VS Code's integrated terminal ($TERM_PROGRAM=vscode): zellij's
 # kitty keyboard protocol would otherwise capture VS Code's own shortcuts
 # (Ctrl+`, Ctrl+P, …). Run `zj` manually there if you do want zellij.
 # (also skipped automatically when already inside a zellij session)
+{{ if ne .machine_type "csie" -}}
 if [[ "$TERM_PROGRAM" != "vscode" ]]; then
     command -v zellij &>/dev/null && eval "$(zellij setup --generate-auto-start zsh)"
 fi
+{{ end -}}
 
 # pnpm
 export PNPM_HOME="$HOME/.local/share/pnpm"
@@ -104,6 +139,9 @@ backward-kill-space-word() {
 zle -N backward-kill-space-word
 bindkey "\e\C-?" backward-kill-space-word   # ⌥+Delete
 bindkey "\e\C-h" backward-kill-space-word   # ⌥+Backspace
+
+# MAGICK_HOME moved to ~/.zshenv — .zshrc is interactive-only, so scripts and
+# agent-run commands never saw it and every vector conversion failed silently.
 
 {{ if eq .machine_type "csie" -}}
 # >>> conda initialize >>>
